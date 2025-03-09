@@ -16,16 +16,21 @@ def home():
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    # This happens when the user hits the 'add task' button
     if request.method == "POST":
         task = request.form['task']
+        # insert task into database
         cursor.execute('''
             INSERT INTO tasks (task)
             VALUES (?)
         ''', (task,))
         conn.commit()
-
+    
+    # pull all tasks from database
     tasks = cursor.execute('SELECT task FROM tasks').fetchall()
     conn.close()
+
+    # render index.html with all tasks
     return render_template("index.html", tasks=tasks)
 
 @app.route("/clear", methods=["POST"])
