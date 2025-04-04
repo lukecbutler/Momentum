@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, flash
 import sqlite3
 
 app = Flask(__name__)
@@ -18,13 +18,18 @@ def home():
 
     # This happens when the user hits the 'add task' button
     if request.method == "POST":
-        task = request.form['task']
-        # insert task into database
-        cursor.execute('''
-            INSERT INTO tasks (task)
-            VALUES (?)
-        ''', (task,))
-        conn.commit()
+        add_task(request.form['task'])
+
+        # DO NOT REMOVE. TESTING PURPOSE IN ANOTHER FUNCTION
+
+        # # insert task into database
+        # cursor.execute('''
+        #     INSERT INTO tasks (task)
+        #     VALUES (?)
+        # ''', (task,))
+        # conn.commit()
+
+        ######################################
     
     # pull all tasks from database
     tasks = cursor.execute('SELECT task FROM tasks').fetchall()
@@ -32,6 +37,34 @@ def home():
 
     # render index.html with all tasks
     return render_template("index.html", tasks=tasks)
+
+def add_task(task):
+    """
+    Add task to the database
+    :param task: Task to be added to the database containing a string 
+    """
+    if not task or task == "":
+        # flash("Task cannot be empty.")  #TODO: FIND WHERE TO USE THIS
+        return False
+    
+    try:
+        with get_db_connection() as conn:
+            # You create a cursor to execute the sql commands
+            cursor = conn.cursor()
+            # insert task into database
+            cursor.execute('''
+                INSERT INTO tasks (task)
+                VALUES (?)
+            ''', (task,))
+            conn.commit()
+        return True
+    
+    except sqlite3.Error:
+        # flash("Error adding task. Please try again.")  #TODO: FIND WHERE TO USE THIS
+        return False
+
+
+
 
 @app.route("/clear", methods=["POST"])
 def clear_database():
