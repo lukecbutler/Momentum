@@ -56,7 +56,6 @@ def test_add_task_success():
         # Check if the task was added to the database
         assert any(test_task in row for row in cursor.execute('SELECT task FROM tasks').fetchall())
 
-# TODO: Complete test clear database function
 def test_clear_database():
     """
     Test the clear_database function to ensure all items are cleared
