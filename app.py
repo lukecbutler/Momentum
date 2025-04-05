@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash
 import sqlite3
+from login import *
 
 app = Flask(__name__)
 
@@ -14,7 +15,9 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
-@app.route("/", methods=["GET", "POST"])
+# where user adds & see's their tasks
+@app.route("/", methods = ['GET', 'POST'])
+@app.route("/home", methods=["GET", "POST"])
 def home():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -23,17 +26,6 @@ def home():
     if request.method == "POST":
         add_task(request.form['task'])
 
-        # DO NOT REMOVE. TESTING PURPOSE IN ANOTHER FUNCTION
-
-        # # insert task into database
-        # cursor.execute('''
-        #     INSERT INTO tasks (task)
-        #     VALUES (?)
-        # ''', (task,))
-        # conn.commit()
-
-        ######################################
-
     # pull all tasks from database
     tasks = cursor.execute('SELECT task FROM tasks').fetchall()
     conn.close()
@@ -41,6 +33,7 @@ def home():
     # render index.html with all tasks
     return render_template("index.html", tasks=tasks)
 
+# function that takes a task and adds it to database
 def add_task(task):
     """
     Add task to the database
@@ -67,41 +60,15 @@ def add_task(task):
         return False
 
 
-@app.route('/register', methods=["GET", "POST"])
-def register():
-    if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
-
-        if username in users:
-            return "Username already exists! Please choose a different one."
-        else:
-            # creates a new key-value pair in the users dictionary
-            users[username] = password # username is the key ; password is the value
-            # redirects user to login page after successful registration
-            return redirect(url_for('login'))
-    return render_template('register.html')
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form.get("username")
-        password = request.form.get("password")
-
-        # checks if the username is a key in the user dict, 
-        # and if the password is associated with that particular username
-        if username in users and users[username] == password:
-            return f"Welcome, {username}! You are now logged in."
-        return "Invalid username or password."
-    return redirect(url_for('home'))
+@app.route("/")
 
 @app.route("/clear", methods=["POST"])
 def clear_database():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM tasks')  # Clear all tasks
-    conn.commit()
-    conn.close()
+    
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM tasks')
+        conn.commit()
     return redirect(url_for('home'))  # Redirect back to the home page
 
 if __name__ == '__main__':
