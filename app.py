@@ -3,6 +3,9 @@ import sqlite3
 
 app = Flask(__name__)
 
+# Dummy user database (in-memory dictionary)
+users = {}
+
 # Database connection
 DATABASE = "tasks.db"
 
@@ -30,7 +33,7 @@ def home():
         # conn.commit()
 
         ######################################
-    
+
     # pull all tasks from database
     tasks = cursor.execute('SELECT task FROM tasks').fetchall()
     conn.close()
@@ -46,7 +49,7 @@ def add_task(task):
     if not task or task == "":
         # flash("Task cannot be empty.")  #TODO: FIND WHERE TO USE THIS
         return False
-    
+
     try:
         with get_db_connection() as conn:
             # You create a cursor to execute the sql commands
@@ -58,13 +61,39 @@ def add_task(task):
             ''', (task,))
             conn.commit()
         return True
-    
+
     except sqlite3.Error:
         # flash("Error adding task. Please try again.")  #TODO: FIND WHERE TO USE THIS
         return False
 
 
+@app.route('/register', methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
 
+        if username in users:
+            return "Username already exists! Please choose a different one."
+        else:
+            # creates a new key-value pair in the users dictionary
+            users[username] = password # username is the key ; password is the value
+            # redirects user to login page after successful registration
+            return redirect(url_for('login'))
+    return render_template('register.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get("username")
+        password = request.form.get("password")
+
+        # checks if the username is a key in the user dict, 
+        # and if the password is associated with that particular username
+        if username in users and users[username] == password:
+            return f"Welcome, {username}! You are now logged in."
+        return "Invalid username or password."
+    return redirect(url_for('home'))
 
 @app.route("/clear", methods=["POST"])
 def clear_database():
