@@ -29,7 +29,7 @@ def login():
         # checks if the username is a key in the user dict, 
         # and if the password is associated with that particular username
         if username in users and users[username] == password:
-            return f"Welcome, {username}! You are now logged in."
+            return redirect(url_for('home'))
         return "Invalid username or password."
     return render_template('login.html')
 

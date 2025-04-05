@@ -4,6 +4,7 @@ import sqlite3
 conn = sqlite3.connect("tasks.db")
 cursor = conn.cursor()
 
+# Create the Workouts table
 # Create the tables
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS tasks (
@@ -29,3 +30,6 @@ CREATE TABLE IF NOT EXISTS tasktable (
     FOREIGN KEY (userID) REFERENCES userstable(userID)
 );
 ''')
+
+
+conn.close()
