@@ -67,9 +67,3 @@ def test_clear_database():
     with get_db_connection() as conn:
         count = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]        
         assert count == 0
-        
-        
-
-
-
-
