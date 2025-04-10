@@ -29,3 +29,5 @@ CREATE TABLE IF NOT EXISTS tasktable (
     FOREIGN KEY (userID) REFERENCES userstable(userID)
 );
 ''')
+
+conn.close()

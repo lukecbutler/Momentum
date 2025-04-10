@@ -59,9 +59,6 @@ def add_task(task):
         # flash("Error adding task. Please try again.")  #TODO: FIND WHERE TO USE THIS
         return False
 
-
-@app.route("/")
-
 @app.route("/clear", methods=["POST"])
 def clear_database():
     
