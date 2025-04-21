@@ -86,7 +86,7 @@ def home():
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        tasks = cursor.execute('SELECT task FROM tasks WHERE user_id = ?', (session['user_id'],)).fetchall()
+        tasks = cursor.execute('SELECT id, task FROM tasks WHERE user_id = ?', (session['user_id'],)).fetchall()
 
     return render_template("index.html", tasks=tasks, username=session['username'])
 
@@ -99,6 +99,19 @@ def add_task(task, user_id):
         return True
     except sqlite3.Error:
         return False
+
+@app.route("/delete_task/<int:task_id>", methods=["POST"])
+def delete_task(task_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        # Verify the task belongs to the current user before deleting
+        cursor.execute('DELETE FROM tasks WHERE id = ? AND user_id = ?', 
+                      (task_id, session['user_id']))
+        conn.commit()
+    return redirect(url_for('home'))
 
 @app.route("/clear", methods=["POST"])
 def clear_database():
