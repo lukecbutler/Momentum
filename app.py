@@ -12,7 +12,7 @@ def get_db_connection():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     return conn
-
+ 
 # Initialize database with users table
 def init_db():
     with get_db_connection() as conn:
