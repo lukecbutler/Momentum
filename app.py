@@ -1,23 +1,20 @@
 from flask import Flask, render_template, request, redirect, url_for, session
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import date
 
 app = Flask(__name__)
-app.secret_key = 'password'  # Replace with a real secret key in production
-
-# Database connection
+app.secret_key = 'password'  # Replace with a secure key in production
 DATABASE = "tasks.db"
 
 def get_db_connection():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     return conn
- 
-# Initialize database with users table
+
 def init_db():
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        # Create users table if it doesn't exist
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,11 +22,11 @@ def init_db():
                 password TEXT NOT NULL
             )
         ''')
-        # Create tasks table if it doesn't exist
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task TEXT NOT NULL,
+                date TEXT NOT NULL,
                 user_id INTEGER,
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )
@@ -46,8 +43,7 @@ def login():
         password = request.form.get("password")
 
         with get_db_connection() as conn:
-            cursor = conn.cursor()
-            user = cursor.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+            user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
 
             if user and check_password_hash(user['password'], password):
                 session['user_id'] = user['id']
@@ -65,36 +61,38 @@ def register():
 
         try:
             with get_db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute('INSERT INTO users (username, password) VALUES (?, ?)', 
-                               (username, hashed_password))
+                conn.execute('INSERT INTO users (username, password) VALUES (?, ?)', (username, hashed_password))
                 conn.commit()
             return redirect(url_for('login'))
         except sqlite3.IntegrityError:
-            return "Username already exists! Please choose a different one."
+            return "Username already exists!"
     return render_template('register.html')
 
 @app.route("/home", methods=["GET", "POST"])
 def home():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    
+
     if request.method == "POST":
         task = request.form.get('task')
+        task_date = request.form.get('date') or date.today().isoformat()
         if task and task.strip():
-            add_task(task, session['user_id'])
+            add_task(task, session['user_id'], task_date)
+        # Redirect after POST to avoid form resubmission
+        return redirect(url_for('home'))
 
     with get_db_connection() as conn:
-        cursor = conn.cursor()
-        tasks = cursor.execute('SELECT id, task FROM tasks WHERE user_id = ?', (session['user_id'],)).fetchall()
+        tasks = conn.execute('SELECT id, task, date FROM tasks WHERE user_id = ?', 
+                             (session['user_id'],)).fetchall()
 
-    return render_template("index.html", tasks=tasks, username=session['username'])
+    return render_template("index.html", tasks=tasks, username=session['username'],
+                           current_date=date.today().isoformat())
 
-def add_task(task, user_id):
+def add_task(task, user_id, task_date):
     try:
         with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('INSERT INTO tasks (task, user_id) VALUES (?, ?)', (task, user_id))
+            conn.execute('INSERT INTO tasks (task, date, user_id) VALUES (?, ?, ?)', 
+                         (task, task_date, user_id))
             conn.commit()
         return True
     except sqlite3.Error:
@@ -106,10 +104,7 @@ def delete_task(task_id):
         return redirect(url_for('login'))
     
     with get_db_connection() as conn:
-        cursor = conn.cursor()
-        # Verify the task belongs to the current user before deleting
-        cursor.execute('DELETE FROM tasks WHERE id = ? AND user_id = ?', 
-                      (task_id, session['user_id']))
+        conn.execute('DELETE FROM tasks WHERE id = ? AND user_id = ?', (task_id, session['user_id']))
         conn.commit()
     return redirect(url_for('home'))
 
@@ -119,8 +114,7 @@ def clear_database():
         return redirect(url_for('login'))
     
     with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM tasks WHERE user_id = ?', (session['user_id'],))
+        conn.execute('DELETE FROM tasks WHERE user_id = ?', (session['user_id'],))
         conn.commit()
     return redirect(url_for('home'))
 
