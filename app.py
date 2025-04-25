@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import date
+from datetime import date, datetime
 
 app = Flask(__name__)
 app.secret_key = 'password'  # Replace with a secure key in production
@@ -78,14 +78,30 @@ def home():
         task_date = request.form.get('date') or date.today().isoformat()
         if task and task.strip():
             add_task(task, session['user_id'], task_date)
-        # Redirect after POST to avoid form resubmission
         return redirect(url_for('home'))
 
     with get_db_connection() as conn:
         tasks = conn.execute('SELECT id, task, date FROM tasks WHERE user_id = ?', 
                              (session['user_id'],)).fetchall()
 
-    return render_template("index.html", tasks=tasks, username=session['username'],
+    # Format date to MM/DD/YYYY
+    formatted_tasks = []
+
+    for task in tasks:
+        # Convert the date to a new format
+        date_parts = task['date'].split('-')  # ['YYYY', 'MM', 'DD']
+        formatted_date = f"{date_parts[1]}/{date_parts[2]}/{date_parts[0]}"  # MM/DD/YYYY
+
+        # Create a new dictionary with the formatted date
+        new_task = {
+            'id': task['id'],
+            'task': task['task'],
+            'date': formatted_date
+        }
+        formatted_tasks.append(new_task)
+
+
+    return render_template("index.html", tasks=formatted_tasks, username=session['username'],
                            current_date=date.today().isoformat())
 
 def add_task(task, user_id, task_date):
