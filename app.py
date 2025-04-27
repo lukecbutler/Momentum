@@ -7,7 +7,7 @@ app = Flask(__name__) # create the actual application
 app.secret_key = 'password'  # used in hashing passwords - replace with secure 32b random string in production
 DATABASE = "tasks.db" # name of database
 
-# used thruout the application for a quick connection to the database - returns a connection to the db
+# used throughout the application for a quick connection to the database - returns a connection to the db
 def get_db_connection():
     conn = sqlite3.connect(DATABASE) # set conn as the connection to the database
     conn.row_factory = sqlite3.Row # return the datbase as a dictionary like object
