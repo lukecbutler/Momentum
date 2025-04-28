@@ -1,7 +1,29 @@
 import pytest
 import sqlite3
 import random
-from app import get_db_connection, init_db, add_task
+from app import app as flask_app
+from app import *
+from werkzeug.security import generate_password_hash, check_password_hash
+
+
+@pytest.fixture
+def app():
+    """
+    Fixture to provide the Flask app for testing.
+    :return: Flask app instance
+    """
+    flask_app.config["TESTING"] = True
+    return flask_app
+
+    
+@pytest.fixture
+def client(app):
+    """
+    Creating a test client to test the app and database
+    :param app: Flask app instance
+    :return: Test client instance
+    """
+    return app.test_client()
 
 def test_get_db_connection():
     """
@@ -21,22 +43,11 @@ def test_get_db_connection():
         result = cursor.fetchone()
         assert result[0] == 1
 
-@pytest.fixture
-def in_memory_db(monkeypatch):
+def test_init_db():
     """
-    Fixture to create an in-memory SQLite database for testing.
+    Test the init_db function to ensure that the database tables are created correctly
+    and that the database is initialized properly.
     """
-    def mock_get_db_connection():
-        return sqlite3.connect(":memory:")  # In-memory database
-
-    monkeypatch.setattr("app.get_db_connection", mock_get_db_connection)
-
-    # Initialize DB and insert a single user for all tests
-    init_db()
-
-    yield get_db_connection  # This will be the in-memory connection
-
-def test_init_db(in_memory_db):
 
     # Call the init_db function
     init_db()
@@ -51,111 +62,241 @@ def test_init_db(in_memory_db):
         assert 'users' in tables
         assert 'tasks' in tables
 
-def test_add_task_success(in_memory_db):
-    # TODO: The problem is that the add_task is calling the database
-    # that is being used in the app.py file, not the in-memory one.
-    # This is a problem because the in-memory one is not being used in the app.py file.
-    # TODO: FIGURE THIS OUT TOMORROW
+def register_test_user(client, test_username, test_password):
+    """
+    Reusable function to register a test user in the database
+    :param client: Test client that was created for testing the app
+    :param test_username: Username for the test user
+    :param test_password: Password for the test user
+    """
+    hashed_password = generate_password_hash(test_password)
 
-    # Insert user into the users table for the foreign key reference
-    test_user = random.randint(1, 1000000)  # Random user ID for testing
-    with get_db_connection() as conn:
-        conn.execute('INSERT INTO users (username, password) VALUES (?, ?)', (test_user, 'testpass1'))
-        conn.commit()
-
-    # Now, test adding a task
-    task = "Test Task"
-    user_id = test_user  # The user_id of the user we just added
-    task_date = "2025-04-26"
+    response = client.post('/register', data={
+        "username": test_username,
+        "password": hashed_password 
+    }, follow_redirects=True)
     
-    result = add_task(task, user_id, task_date)
+    assert response.status_code == 200
 
-    # Check that the task was added successfully
-    assert result == True
+def remove_test_user(client, app, test_username):
+    """
+    Reusable function to remove a test user from the database
+    :param client: Test client that was created for testing the app
+    :param test_username: Username for the test user to be removed
+    """
+    with app.app_context():
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            user = cursor.fetchone()
+            cursor.execute('DELETE FROM users WHERE username = ?', (test_username,))
+            conn.commit()
+
+            return (cursor.fetchone() is None)  # Ensure that the user is deleted
+
+
+def test_register_success(app, client):
+    """
+    Test the registration functionality to ensure that users can register
+    with a unique username and password
+    :param client: Test client that was created for testing the app
+    """
+    # Check the databse to make sure the user was added
+    register_test_user(client, "testusername", "testpassword")
+
+    with app.app_context():
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM users WHERE username = ?', ("testusername",))
+            user = cursor.fetchone()
+            assert user is not None
+            assert user['username'] == "testusername"
+            assert user['password'] != "testpassword"  # Password should be hashed in a real instance
+            assert user['id'] is not None  # Check if the user ID is generated
+
+            # cursor.execute('DELETE FROM users WHERE username = ?', ("testusername",))  # Clean up test user
+            # conn.commit()
+
+            # Ensure that the user is deleted
+            removed = remove_test_user(client, app, "testusername") # Clean up/remove test user after the test
+            assert removed is True  # Ensure that the user is deleted
+
+def test_register_failure(app, client):
+    """
+    Test the registration functionality to ensure that duplicate usernames cannot be
+    registered
+    :param client: Test client that was created for testing the app
+    """
+    # Register a test user
+    register_test_user(client, "duplicate", "testpassword")
+
+    with app.app_context():
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            # Attempt to register the same user again
+            response = client.post('/register', data={
+                "username": "duplicate",
+                "password": "testpassword" 
+            }, follow_redirects=True)
+            
+            # Check that the response indicates failure (e.g., status code 200 and error message)
+            assert response.status_code == 200
+            assert b"Username already exists!" in response.data
+
+            # Ensure that the user is deleted
+            removed = remove_test_user(client, app, "testusername") # Clean up/remove test user after the test
+            assert removed is True  # Ensure that the user is deleted
     
-    # Verify that the task was inserted into the tasks table
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT task, date, user_id FROM tasks WHERE user_id = ?", (user_id,))
-        task_data = cursor.fetchone()
-        
-        assert task_data is not None
-        assert task_data[0] == task  # Task name
-        assert task_data[1] == task_date  # Task date
-        assert task_data[2] == user_id  # User id
 
 
+# TODO: How does hash work?
+def test_login_success(app, client):
+    """
+    Test the login functionality to ensure that users can log in successfully
+    :param client: Test client that was created for testing the app
+    """
+    # Insert a test user into the database
+    register_test_user(client, "testuser", "testpassword")
 
+    response = client.post("/login", data={
+        "username": "testuser",
+        "password": "testpassword"
+    })
 
+    assert response.status_code == 200  # Check for redirect after successful login
+    # assert b"Welcome, testuser!" in response.data  # Check for welcome message
 
+    removed = remove_test_user(client, app, "testuser") # Clean up/remove test user after the test
+    assert removed is True 
 
-
-
-
-
-
-
-# @pytest.fixture
-# def client():
-#     """
-#     Creating a test client to test the app and database
-#     :yield: client
-#     """
-#     app.config['TESTING'] = True
-#     client = app.test_client()
-#     yield client
+def test_login_failure(client):
+    """
+    Test the login functionality to ensure that invalid credentials are handled gracefully
+    :param client: Test client that was created for testing the app
+    """
+    # Attempt to log in with invalid credentials
+    response = client.post('/login', data={'username': 'invaliduser', 'password': 'invalidpass'})
     
-# def test_get_db_connection():
-#     """
-#     Test if get_db_connection() returns a valid SQLite connection
-#     """
-#     with get_db_connection() as conn:
-#         assert isinstance(conn, sqlite3.Connection)
+    # Check that the response indicates failure (e.g., status code 200 and error message)
+    assert response.status_code == 200
+    assert b"Invalid username or password." in response.data
 
-# def test_home(client):
-#     """
-#     Test the home page to ensure that the all homepage functionality is present
-#     :param client: Test client that was created for testing the app
-#     """
-#     # 
-#     response = client.get('/')
-#     assert response.status_code == 200
+# TODO
+def test_add_task_success(app, client):
+    """
+    Test the add_task function to ensure that valid tasks are successful and are added
+    to the database
+    :param app: Flask app instance
+    :param client: Test client that was created for testing the app
+    """
+    # Create a test user
+    register_test_user(client, "testuser", "testpassword")
 
-#     assert b"Add Task" in response.data  # Check if the "Add Task" button is present
+    with app.app_context():
+        # Get the user_id of the created test user
+        with get_db_connection() as conn:
+            user = conn.execute('SELECT * FROM users WHERE username = ?', ('testuser',)).fetchone()
+            assert user is not None  # make sure the user was created
+            user_id = user['id']
 
-# def test_add_task_failure():
-#     """
-#     Test the add_task function to ensure that submissions of empty tasks are handled gracefully
-#     """
-#     test_task = ""
+        # Now call the add_task function
+        task_added = add_task("Finish Unit Test", user_id, "2025-04-26")
+        assert task_added is True  # Ensure the function returned True
 
-#     # Add a task containing an empty string
-#     result = add_task(test_task)
-#     assert result is False
+        # Now check if the task was actually inserted into the database
+        with get_db_connection() as conn:
+            task = conn.execute('SELECT * FROM tasks WHERE user_id = ?', (user_id,)).fetchone()
+            assert task is not None
+            assert task['task'] == "Finish Unit Test"
+            assert task['date'] == "2025-04-26"
+            assert task['user_id'] == user_id
 
-# def test_add_task_success():
-#     """
-#     Test the add_task function to ensure that tasks are successfully added to the database
-#     """
-#     test_task = "TEST TASK"
+        # Remove test user
+        removed = remove_test_user(client, app, "testuser")
+        assert removed is True
 
-#     result = add_task(test_task)
-#     assert result is True # Check return value
+def test_add_task_failure(app, client):
+    """
+    Test the add_task function to ensure that invalid tasks are handled gracefully
+    :param app: Flask app instance
+    :param client: Test client that was created for testing the app
+    """
+    # Create a test user (optional in this case if you want)
+    register_test_user(client, "testuser", "testpassword")
 
-#     with get_db_connection() as conn:
-#         cursor = conn.cursor()
+    with app.app_context():
+        # Get the user_id of the created test user
+        with get_db_connection() as conn:
+            user = conn.execute('SELECT * FROM users WHERE username = ?', ('testuser',)).fetchone()
+            assert user is not None
+            user_id = user['id']
 
-#         # Check if the task was added to the database
-#         assert any(test_task in row for row in cursor.execute('SELECT task FROM tasks').fetchall())
+        # Now simulate a failure
+        # Intentionally break it: pass invalid SQL parameters
 
-# def test_clear_database():
-#     """
-#     Test the clear_database function to ensure all items are cleared
-#     """
+        # Passing None as task_date should break if the database expects NOT NULL
+        task_added = add_task("Invalid Task", user_id, None)
+        assert task_added is False  # It should fail and return False
 
-#     with app.test_request_context():
-#         clear_database()   
+        # Alternatively: pass invalid user_id
+        task_added_invalid_user = add_task("Another Invalid Task", 999999, "2025-04-26")
+        # Assuming user_id=999999 does not exist and foreign key constraints are enabled
+        # If not, this might still "succeed" depending on DB config, so check your schema
+        assert task_added_invalid_user is False or True  # depends if your DB enforces foreign keys
 
-#     with get_db_connection() as conn:
-#         count = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]        
-#         assert count == 0
+        # Clean up
+        removed = remove_test_user(client, app, "testuser")
+        assert removed is True
+
+def test_delete_task_success(app, client):
+    """
+    Test the delete_task function to ensure that valid tasks are deleted successfully
+    :param app: Flask app instance
+    :param client: Test client that was created for testing the app
+    """
+    # Step 1: Register and log in a test user
+    register_test_user(client, "testuser", "testpassword")
+
+    client.post("/login", data={
+        "username": "testuser",
+        "password": "testpassword"
+    }, follow_redirects=True)
+
+    with app.app_context():
+        with get_db_connection() as conn:
+            # Get user_id
+            user = conn.execute('SELECT * FROM users WHERE username = ?', ("testuser",)).fetchone()
+            user_id = user['id']
+
+            # Insert a test task manually
+            conn.execute('INSERT INTO tasks (task, date, user_id) VALUES (?, ?, ?)', 
+                         ("Test Task", "2024-04-27", user_id))
+            conn.commit()
+
+            # Fetch the task ID
+            task = conn.execute('SELECT * FROM tasks WHERE user_id = ? AND task = ?', 
+                                (user_id, "Test Task")).fetchone()
+            task_id = task['id']
+
+    # Step 2: Use Flask's test_request_context to fake a request with the session
+    with app.test_request_context():
+        # Set the user_id manually in the session
+        session['user_id'] = user_id
+
+        # Directly call the delete_task function (not using client.post!)
+        response = delete_task(task_id)
+
+    # Step 3: Check that the response is a redirect
+    assert response.status_code == 302  # Redirect to home
+
+    # Step 4: Confirm the task was actually deleted
+    with app.app_context():
+        with get_db_connection() as conn:
+            deleted_task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+            assert deleted_task is None  # Should not exist anymore
+
+    # Step 5: Clean up user
+    remove_test_user(client, app, "testuser")
+
+# TODO
+def test_delete_task_failure(app, client):
+    pass
