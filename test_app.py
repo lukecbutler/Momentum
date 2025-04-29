@@ -167,7 +167,6 @@ def test_login_failure(client):
     # Attempt to log in with invalid credentials
     response = client.post('/login', data={'username': 'invaliduser', 'password': 'invalidpass'})
     
-    # Check that the response indicates failure (e.g., status code 200 and error message)
     assert response.status_code == 200
     assert b"Invalid username or password." in response.data
 
@@ -266,7 +265,6 @@ def test_delete_task_success(app, client):
         # Set the user_id manually in the session
         session['user_id'] = user_id
 
-        # Directly call the delete_task function (not using client.post!)
         response = delete_task(task_id)
 
     # Step 3: Check that the response is a redirect
@@ -341,3 +339,22 @@ def test_logout(app, client):
     # Register and log in a test user
     register_test_user(client, "testusername", "testpassword")
     
+    response = client.post("/login", data={
+    "username": "testusername",
+    "password": "testpassword"
+    })
+
+    assert response.status_code == 302  # Check for redirect after successful login
+
+    with client.session_transaction() as sess:
+        assert "user_id" in sess
+
+    logout_response = client.get("/logout", follow_redirects=True)
+    assert logout_response.status_code == 200  # Check for successful logout
+    
+    with client.session_transaction() as sess:
+        assert "user_id" not in sess
+
+    removed = remove_test_user(client, app, "testusername")
+    assert removed is True
+
