@@ -119,6 +119,7 @@ def test_register_failure(app, client):
     """
     Test the registration functionality to ensure that duplicate usernames cannot be
     registered
+    :param app: Flask app instance
     :param client: Test client that was created for testing the app
     """
     # Register a test user
