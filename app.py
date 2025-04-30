@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session # import portions of flask needed for app
+from flask import Flask, render_template, request, redirect, url_for, make_response # import portions of flask needed for app
 import sqlite3 # import sqlite, needed for creating, writing to, and pulling from the database
 from werkzeug.security import generate_password_hash, check_password_hash # hashes passwords & checks the hash against the security key
 from datetime import date # handles dates for task deadlines
@@ -36,6 +36,13 @@ def init_db(): # creates the tables in the database if they accidently clear - c
 
 init_db() # run init_db when the application is ran, to handle database tables not being present
 
+# Helper functions to get user info from cookies
+def get_current_user_id():
+    return request.cookies.get('user_id')
+
+def get_current_username():
+    return request.cookies.get('username')
+
 # as login is our home route, send users to login when they visit the base route of our site
 @app.route("/", methods=['GET', 'POST'])
 @app.route("/login", methods=['GET', 'POST'])
@@ -53,14 +60,12 @@ def login():
 
             # if the user was found in the database, and the password enters matches that users password, continue
             if user and check_password_hash(user['password'], password):
-
-                # saves the user_id and username to the session they are in, allowing access once user has logged in. 
-                # consider switching to cookies so the user never has to log in again until they clear the cookies in their browser
-                session['user_id'] = user['id']
-                session['username'] = user['username']
-
-                # if the entered password matches that users password, allow login (send to home route)
-                return redirect(url_for('home'))
+                # create response with redirect
+                resp = make_response(redirect(url_for('home')))
+                # set cookies for user_id and username that expire in 30 days
+                resp.set_cookie('user_id', str(user['id']), max_age=60*60*24*30)
+                resp.set_cookie('username', user['username'], max_age=60*60*24*30)
+                return resp
             return "Invalid username or password."
     return render_template('login.html') # the get request (just visiting the / or /login route of the page)
 
@@ -93,9 +98,9 @@ def register():
 # the mainpage of momentum - this is the display task functionality
 @app.route("/home", methods=["GET", "POST"])
 def home():
-
-    # if the user_id is stored in the current session, send back to login
-    if 'user_id' not in session:
+    # check for user_id cookie instead of session
+    user_id = get_current_user_id()
+    if not user_id:
         return redirect(url_for('login'))
 
     # if the user enters a task to display
@@ -109,7 +114,7 @@ def home():
 
         # if the task is not empty add the task to the users tasks, via the add task method
         if task and task.strip():
-            add_task(task, session['user_id'], task_date)
+            add_task(task, user_id, task_date)
 
         # once the task has been added to the database, redirect them back to the home page to revent
         # the refresh re-add task error
@@ -118,7 +123,7 @@ def home():
     # get all tasks from the user's task list, and set them to a tasks variable
     with get_db_connection() as conn:
         tasks = conn.execute('SELECT id, task, date FROM tasks WHERE user_id = ?', 
-                             (session['user_id'],)).fetchall()
+                             (user_id,)).fetchall()
 
     # reformat the date to display properly on the homepage
     # format date to MM/DD/YYYY
@@ -139,7 +144,7 @@ def home():
         formatted_tasks.append(new_task)
 
     # returns the index.html homepage with all tasks
-    return render_template("index.html", tasks=formatted_tasks, username=session['username'],
+    return render_template("index.html", tasks=formatted_tasks, username=get_current_username(),
                            current_date=date.today().isoformat())
 
 # add task's user has entered
@@ -158,14 +163,14 @@ def add_task(task, user_id, task_date):
 # delete task based on task_id - makes sure a user cannot delete another users task
 @app.route("/delete_task/<int:task_id>", methods=["POST"])
 def delete_task(task_id):
-
-    # if user is not currently in a session redirect them to login
-    if 'user_id' not in session:
+    # check for user_id cookie instead of session
+    user_id = get_current_user_id()
+    if not user_id:
         return redirect(url_for('login'))
     
     # get a database connection & deletes task based on task_id and the user_id
     with get_db_connection() as conn:
-        conn.execute('DELETE FROM tasks WHERE id = ? AND user_id = ?', (task_id, session['user_id']))
+        conn.execute('DELETE FROM tasks WHERE id = ? AND user_id = ?', (task_id, user_id))
         conn.commit()
     # one task is deleted they are stay in the home route
     return redirect(url_for('home'))
@@ -173,23 +178,26 @@ def delete_task(task_id):
 # clears all tasks the user has in the task list (procrastinate)
 @app.route("/clear", methods=["POST"])
 def clear_database():
-
-    # if the user is not in a current session redirect them to login
-    if 'user_id' not in session:
+    # check for user_id cookie instead of session
+    user_id = get_current_user_id()
+    if not user_id:
         return redirect(url_for('login'))
     
     # deletes all tasks of a certain user_id
     with get_db_connection() as conn:
-        conn.execute('DELETE FROM tasks WHERE user_id = ?', (session['user_id'],))
+        conn.execute('DELETE FROM tasks WHERE user_id = ?', (user_id,))
         conn.commit()
     # they stay at the homepage once all tasks are deleted
     return redirect(url_for('home'))
 
-# clears session for the user, logging them out of momentum
+# clears cookies for the user, logging them out of momentum
 @app.route("/logout")
 def logout():
-    session.clear()
-    return redirect(url_for('login'))
+    resp = make_response(redirect(url_for('login')))
+    # Delete the authentication cookies
+    resp.delete_cookie('user_id')
+    resp.delete_cookie('username')
+    return resp
 
 # runs the app.py file via port 80
 if __name__ == '__main__':
