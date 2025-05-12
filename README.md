@@ -2,6 +2,10 @@
 ## Personal Dashboard and Task Master
 
 This project demonstrates a personal task master with weather information that allows users to prepare for their day.
+Upcoming:
+Proper Momentum Landing Page.
+UI fix for weather card - to look proper on all screen sizes & ratios.
+Adding Email for Registration - for forgotten password resetting.
 
 --- 
 
